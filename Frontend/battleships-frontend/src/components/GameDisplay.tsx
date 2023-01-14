@@ -1,26 +1,45 @@
-import { useEffect, useState } from "react";
-import { GameSession } from "../api/game-session";
-import { battleShipsApi } from "../api/battleships-api";
+import { GamePhase, GameSession, ShipPositions } from "../api/game-session";
 import { HStack, Card, CardHeader, CardBody } from "@chakra-ui/react";
 import Board from "./Board";
+import PlacementBoard from "./PlacementBoard";
+import { battleShipsApi } from "../api/battleships-api";
 
 interface GameDisplayProps {
     username: string,
-    gameSession: GameSession
+    gameSession: GameSession,
+    refreshGameSession: () => any
 }
 
 
-function GameDisplay({ username, gameSession }: GameDisplayProps) {
-    const [enemyName, setEnemyName] = useState('');
-    const columns = gameSession.boardSize;
+function GameDisplay({ username, gameSession, refreshGameSession }: GameDisplayProps) {
 
-    useEffect(() => {
-        async function GetEnemyName() {
-            const name = await battleShipsApi.getName(gameSession.enemyPlayerId);
-            setEnemyName(name);
+    const shipLengths = gameSession.playerShipLengths;
+
+    async function onFinishedPlacing(shipPostions: number[][]) {
+        const ships = Array.from(Array(gameSession.playerShipLengths.length).keys()).map(() => ({} as ShipPositions));
+        for(let i = 0 ; i < ships.length; i++) {
+            ships[i].positions = shipPostions[i];
         }
-        GetEnemyName();
-    }, [gameSession])
+        await battleShipsApi.submitPlayerPositions(gameSession.playerId, gameSession.id, ships);
+        refreshGameSession();
+    }
+
+    if (gameSession.currentPhase === GamePhase.Setup) {
+        return (
+        <Card height={'fit-content'}>
+            <CardHeader>
+                {username}'s Board (Yours) - Place your ships
+            </CardHeader>
+            <CardBody>
+                <PlacementBoard boardSize={gameSession.boardSize} shipLengths={shipLengths} onFinishedPlacing={onFinishedPlacing}/>
+            </CardBody>
+        </Card>)
+    }
+
+    async function onEnemyBoardClick(position: number) {
+        await battleShipsApi.playerShot(gameSession.playerId, gameSession.id, position)
+        refreshGameSession();
+    }
 
     return (
         <HStack spacing={"50px"}>
@@ -29,15 +48,17 @@ function GameDisplay({ username, gameSession }: GameDisplayProps) {
                 {username}'s Board (Yours)
                 </CardHeader>
                 <CardBody>
-                    <Board columns={columns}/>
+                    <Board shipColor={'green.400'} size={gameSession.boardSize} 
+                    shotPostions={gameSession.enemyShotPositions} shipPostions={gameSession.playerShipPositions}/>
                 </CardBody>
             </Card>
             <Card>
                 <CardHeader>
-                {enemyName}'s Board
+                Enemy's Board
                 </CardHeader>
                 <CardBody>
-                    <Board columns={columns}/>
+                    <Board shipColor={'red.200'} size={gameSession.boardSize} onBoxClick={onEnemyBoardClick}
+                    shotPostions={gameSession.playerShotPositions} shipPostions={gameSession.revealedEnemyPositions}/>
                 </CardBody>
             </Card>
         </HStack>

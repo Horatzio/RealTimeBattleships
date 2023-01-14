@@ -1,4 +1,4 @@
-const BASE_URL = 'https://localhost:7053'
+const BASE_URL = 'https://localhost:7037'
 
 export interface AppConfig {
     baseUrl: string

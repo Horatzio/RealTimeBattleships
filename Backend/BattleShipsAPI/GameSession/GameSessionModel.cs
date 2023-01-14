@@ -3,21 +3,19 @@
     public class GameSessionModel
     {
         public string Id { get; set; }
-        public string Player1Id { get; set; }
-        public string Player2Id { get; set; }
+        public string PlayerId { get; set; }
+        public string RobotId { get; set; }
         public int BoardSize { get; set; } = DefaultColumnsNumber;
 
         public const int DefaultColumnsNumber = 10;
-
-        public GameSessionState GameState;
+        public GamePhase CurrentPhase { get; set; }
     }
 
-    public enum GameSessionState
+    public enum GamePhase
     {
-        Setup,
-        Player1Shot,
-        Player2Shot,
-        Player1Victory,
-        Player2Victory
+        Setup = 0,
+        Fight = 1,
+        Victory = 2,
+        Loss = 3,
     }
 }

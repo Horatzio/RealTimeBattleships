@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import UserLogin from "./UserLogin";
 import { battleShipsApi } from "../api/battleships-api";
-import { Card, Spinner, Text } from "@chakra-ui/react";
+import { Spinner } from "@chakra-ui/react";
 import { GameSession } from "../api/game-session";
 import GameDisplay from "./GameDisplay";
 import GameStarter from "./GameStarter";
-import { battleShipsHub } from "../api/battleships-hub";
 
 const USER_ID = 'BATTLESHIPS_USER_ID';
 const USERNAME = 'BATTLESHIPS_USERNAME';
@@ -32,14 +31,14 @@ function GameManager() {
         }
       }
 
+      setIsLoading(true);
       Promise.allSettled([
         GetUserIdFromLocalStorage(),
         GetUsernameFromLocalStorage()
       ]).then(() => setIsLoading(false))
-
     }, [])
 
-    useEffect(() => {
+    const getGameSession = useCallback(() => {
       if (!userId) return;
 
       async function GetGameSession() {
@@ -47,14 +46,14 @@ function GameManager() {
         setGameSession(gameSesion);
       }
 
-      async function ConnectToHub() {
-        await battleShipsHub.connect(userId!)
-        battleShipsHub.onGameSessionUpdate((gameSession: GameSession) => setGameSession(gameSession))
-      }
-
-      ConnectToHub().then(() => GetGameSession())
-
+      setIsLoading(true)
+      GetGameSession()
+        .then(() => setIsLoading(false))
     }, [userId])
+
+    useEffect(() => {
+      getGameSession()
+    }, [userId, getGameSession])
 
     async function onLogin(username: string) {
       const userId = await battleShipsApi.login(username);
@@ -67,6 +66,13 @@ function GameManager() {
       setUsername(username);
     }
 
+    const onStartGame = useCallback(() => {
+      if (!userId) return userId;
+      setIsLoading(true);
+      battleShipsApi.startGame(userId)
+        .then(getGameSession)
+    }, [userId, getGameSession])
+
     if (isLoading) {
       return <Spinner size={'lg'} colorScheme='white' />
     }
@@ -76,15 +82,10 @@ function GameManager() {
     }
 
     if (!gameSession) {
-      return <>
-        <Card>
-          <Text>{username}</Text>
-        </Card>
-        <GameStarter userId={userId}/>
-      </>
+      return <GameStarter onStartGame={onStartGame}/>
     }
 
-    return <GameDisplay username={username} gameSession={gameSession}/>
+    return <GameDisplay username={username} gameSession={gameSession} refreshGameSession={() => getGameSession()}/>
 }
 
 export default GameManager;

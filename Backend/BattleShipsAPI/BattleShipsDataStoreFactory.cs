@@ -2,9 +2,8 @@
 
 namespace BattleShipsAPI
 {
-    public class DataStoreFactory
+    public class BattleShipsDataStoreFactory
     {
-
         private const string DataDirectory = "Data";
         private const string DataFileName = "battleships-data.json";
 

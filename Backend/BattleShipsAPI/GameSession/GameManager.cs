@@ -1,5 +1,4 @@
 ﻿using BattleShipsAPI.GameSession;
-using BattleShipsAPI.User;
 using JsonFlatFileDataStore;
 
 namespace BattleShipsAPI
@@ -8,137 +7,249 @@ namespace BattleShipsAPI
     {
         private readonly IDocumentCollection<GameSessionModel> sessionCollection;
         private readonly IDocumentCollection<FiredShotsModel> firedShotsCollection;
-        private readonly IDocumentCollection<ShipPositionsModel> shipPositionsCollection;
-        private readonly UserManager userManager;
+        private readonly IDocumentCollection<ShipPlacementModel> shipPlacementsCollection;
+        private readonly IShipFactory shipFactory;
+        private readonly Random random;
 
-        public GameManager(DataStore dataStore, UserManager userManager)
+        public GameManager(DataStore dataStore, IShipFactory shipFactory)
         {
             sessionCollection = dataStore.GetCollection<GameSessionModel>();
             firedShotsCollection = dataStore.GetCollection<FiredShotsModel>();
-            shipPositionsCollection = dataStore.GetCollection<ShipPositionsModel>();
-            this.userManager = userManager;
+            shipPlacementsCollection = dataStore.GetCollection<ShipPlacementModel>();
+            this.shipFactory = shipFactory;
+            random = new Random();
         }
 
         public GameSessionDto GetSession(string playerId)
         {
             var session = sessionCollection.AsQueryable()
-                   .FirstOrDefault(s => s.Player1Id == playerId || s.Player2Id == playerId);
+                   .FirstOrDefault(s => s.PlayerId == playerId);
 
             if (session == null)
             {
                 return null;
             }
 
+            var shipPlacement = shipPlacementsCollection.AsQueryable()
+                    .FirstOrDefault(s => s.SessionId == session.Id && s.PlayerId == playerId);
+
+            var playerShipPositions = shipPlacement.Ships.Aggregate(new List<int>(), (list, s) => {
+                list.AddRange(s.Positions);
+                return list;
+            });
+
+            var playerShots = firedShotsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == session.Id && s.PlayerId == playerId);
+            var enemyShots = firedShotsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == session.Id && s.PlayerId == session.RobotId);
+
+            var enemyPlacement = shipPlacementsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == session.Id && s.PlayerId == session.RobotId);
+
+            var revealedEnemyPositions = enemyPlacement.Ships.Aggregate(new List<int>(), (list, s) => {
+               if (s.Positions.Any(p => playerShots.Positions.Contains(p)))
+                {
+                    list.AddRange(s.Positions);
+                }
+                return list;
+            });
+
             var sessionDto = new GameSessionDto()
             {
                 Id = session.Id,
                 BoardSize = session.BoardSize,
+                PlayerId = session.PlayerId,
+                CurrentPhase = session.CurrentPhase,
+                PlayerShipLengths = shipPlacement.Ships.Select(s => s.Length).ToArray(),
+                PlayerShipPositions = playerShipPositions.ToArray(),
+                PlayerShotPositions = playerShots.Positions.ToArray(),
+                EnemyShotPositions = enemyShots.Positions.ToArray(),
+                RevealedEnemyPositions = revealedEnemyPositions.ToArray()
             };
 
-            if (session.GameState == GameSessionState.Setup)
-            {
-                sessionDto.GameState = ClientGameSessionState.Setup;
-            }
-
-            if (session.Player1Id == playerId) {
-                return CurrentPlayerIsPlayer1(sessionDto, session);
-            } else {
-                return CurrentPlayerIsPlayer2(sessionDto, session);
-            }
-        }
-
-        private GameSessionDto CurrentPlayerIsPlayer1(GameSessionDto sessionDto, GameSessionModel session)
-        {
-            sessionDto.CurrentPlayerId = session.Player1Id;
-            sessionDto.EnemyPlayerId = session.Player2Id;
-
-            if (session.GameState == GameSessionState.Player1Shot)
-            {
-                sessionDto.GameState = ClientGameSessionState.CurrentPlayerShot;
-            }
-            else if (session.GameState == GameSessionState.Player2Shot)
-            {
-                sessionDto.GameState = ClientGameSessionState.EnemyPlayerShot;
-            }
-            else if (session.GameState == GameSessionState.Player1Victory)
-            {
-                sessionDto.GameState = ClientGameSessionState.CurrentPlayerVictory;
-            } else if (session.GameState == GameSessionState.Player2Victory) {
-                sessionDto.GameState = ClientGameSessionState.EnemyPlayerVictory;
-            }
-
             return sessionDto;
         }
 
-        private GameSessionDto CurrentPlayerIsPlayer2(GameSessionDto sessionDto, GameSessionModel session)
+        public async Task StartGame(string playerId)
         {
-            sessionDto.CurrentPlayerId = session.Player1Id;
-            sessionDto.EnemyPlayerId = session.Player2Id;
+            var robotId = Guid.NewGuid().ToString();
+            var sessionId = Guid.NewGuid().ToString();
 
-            if (session.GameState == GameSessionState.Player1Shot)
-            {
-                sessionDto.GameState = ClientGameSessionState.EnemyPlayerShot;
-            }
-            else if (session.GameState == GameSessionState.Player2Shot)
-            {
-                sessionDto.GameState = ClientGameSessionState.CurrentPlayerShot;
-            }
-            else if (session.GameState == GameSessionState.Player1Victory)
-            {
-                sessionDto.GameState = ClientGameSessionState.EnemyPlayerVictory;
-            }
-            else if (session.GameState == GameSessionState.Player2Victory)
-            {
-                sessionDto.GameState = ClientGameSessionState.CurrentPlayerVictory;
-            }
-
-            return sessionDto;
-        }
-
-        public IEnumerable<UserModel> GetAvailablePlayers()
-        {
-            var usersInGameIds = sessionCollection.AsQueryable()
-                   .Aggregate(new List<string>(), (list, session) =>
-                   {
-                       list.Add(session.Player1Id);
-                       list.Add(session.Player2Id);
-                       return list;
-                   })
-                   .Distinct();
-
-            return userManager.GetAllUsers()
-                    .Where(u => !usersInGameIds.Contains(u.Id));
-        }
-
-        public async Task StartGame(string player1Id, string player2Id)
-        {
-            await sessionCollection.InsertOneAsync(new GameSessionModel()
-            {
-                Player1Id = player1Id,
-                Player2Id = player2Id
-            });
-
-            await firedShotsCollection.InsertManyAsync(new [] {
+            await Task.WhenAll(new[] {
+                sessionCollection.InsertOneAsync(new GameSessionModel()
+                {
+                    Id = sessionId,
+                    PlayerId = playerId,
+                    RobotId = robotId,
+                    CurrentPhase = GamePhase.Setup
+                }),
+                firedShotsCollection.InsertManyAsync(new[] {
                 new FiredShotsModel()
                 {
-                    PlayerId = player1Id
+                    SessionId = sessionId,
+                    PlayerId = playerId
                 },
                 new FiredShotsModel()
                 {
-                    PlayerId = player2Id
+                    SessionId = sessionId,
+                    PlayerId = robotId
                 },
+            }),
+                CreateShipPositions(sessionId, playerId, robotId)
+            });
+        }
+
+        private async Task CreateShipPositions(string sessionId, string playerId, string robotId)
+        {
+            await shipPlacementsCollection.InsertManyAsync(new[] {
+                new ShipPlacementModel()
+                {
+                    SessionId = sessionId,
+                    PlayerId = playerId,
+                    Ships = shipFactory.Create()
+                },
+                new ShipPlacementModel()
+                {
+                    SessionId = sessionId,
+                    PlayerId = robotId,
+                    Ships = shipFactory.Create()
+                },
+            });
+            // await SetupRobotShipPositions(robotId);
+        }
+
+        //private async Task SetupRobotShipPositions(string robotId)
+        //{
+
+        //}
+
+        public async Task SubmitPlayerPositions(string playerId, string sessionId, ShipPositions[] playerPositions)
+        {
+            if (!playerPositions.Any(p => p.Positions.Length > 0)) return;
+
+            var session = sessionCollection.AsQueryable()
+                .FirstOrDefault(s => s.PlayerId == playerId);
+
+            var shipPlacement = shipPlacementsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == session.Id && s.PlayerId == playerId);
+
+            shipPlacement.Ships = shipPlacement.Ships.Select((s, i) =>
+            {
+                s.Positions = playerPositions[i].Positions;
+                return s;
+            }).ToArray();
+
+            await shipPlacementsCollection.UpdateOneAsync(s => s.SessionId == session.Id && s.PlayerId == playerId, shipPlacement);
+
+            await CopyRobotPositionsFromPlayer(session.Id, session.RobotId, playerPositions);
+
+            session.CurrentPhase = GamePhase.Fight;
+            await sessionCollection.UpdateOneAsync(sessionId, session);
+        }
+
+        private async Task CopyRobotPositionsFromPlayer(string sessionId, string robotId, ShipPositions[] playerPositions)
+        {
+            var shipPlacement = shipPlacementsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == sessionId && s.PlayerId == robotId);
+
+            shipPlacement.Ships = shipPlacement.Ships.Select((s, i) =>
+            {
+                s.Positions = playerPositions[i].Positions;
+                return s;
+            }).ToArray();
+            await shipPlacementsCollection.UpdateOneAsync(s => s.SessionId == sessionId && s.PlayerId == robotId, shipPlacement);
+        }
+
+        public async Task PlayerShot(string playerId, string sessionId, int position)
+        {
+            var session = sessionCollection.AsQueryable()
+                .FirstOrDefault(s => s.PlayerId == playerId);
+
+            FiredShotsModel playerShots = await UpdatePlayerShots(playerId, sessionId, position, session);
+
+            var enemyShots = firedShotsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == session.Id && s.PlayerId == session.RobotId);
+
+            int nextEnemyShot = GetNextEnemyShot(session, enemyShots);
+
+            enemyShots = await UpdateEnemyShots(sessionId, session.RobotId, nextEnemyShot, enemyShots);
+
+            bool hasPlayerWon = VerifyWinCondition(playerId, sessionId, playerShots);
+
+            if (hasPlayerWon)
+            {
+                session.CurrentPhase = GamePhase.Victory;
+                await sessionCollection.UpdateOneAsync(sessionId, session);
+                return;
+            }
+
+            bool hasRobotWon = VerifyRobotWinCondition(playerId, sessionId, enemyShots);
+
+            if (hasRobotWon)
+            {
+                session.CurrentPhase = GamePhase.Loss;
+                await sessionCollection.UpdateOneAsync(sessionId, session);
+            }
+        }
+
+        private bool VerifyRobotWinCondition(string playerId, string sessionId, FiredShotsModel enemyShots)
+        {
+            var playerShipPlacement = shipPlacementsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == sessionId && s.PlayerId == playerId);
+
+            var allPlayerPositions = playerShipPlacement.Ships.Aggregate(new List<int>(), (list, s) =>
+            {
+                list.AddRange(s.Positions);
+                return list;
             });
 
-            await shipPositionsCollection.InsertManyAsync(new[] {
-                new ShipPositionsModel()
-                {
-                    PlayerId = player1Id
-                },
-                new ShipPositionsModel()
-                {
-                    PlayerId = player2Id
-                },
+            bool hasRobotWon = !allPlayerPositions.Except(enemyShots.Positions).Any();
+            return hasRobotWon;
+        }
+
+        private bool VerifyWinCondition(string playerId, string sessionId, FiredShotsModel playerShots)
+        {
+            var robotShipPlacement = shipPlacementsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == sessionId && s.PlayerId == playerId);
+
+            var allRobotPositions = robotShipPlacement.Ships.Aggregate(new List<int>(), (list, s) =>
+            {
+                list.AddRange(s.Positions);
+                return list;
             });
+
+            var hasPlayerWon = !allRobotPositions.Except(playerShots.Positions).Any();
+            return hasPlayerWon;
+        }
+
+        private async Task<FiredShotsModel> UpdatePlayerShots(string playerId, string sessionId, int position, GameSessionModel session)
+        {
+            var playerShots = firedShotsCollection.AsQueryable()
+                .FirstOrDefault(s => s.SessionId == session.Id && s.PlayerId == playerId);
+            playerShots.Positions.Add(position);
+
+            await firedShotsCollection.UpdateOneAsync((s) => s.SessionId == sessionId && s.PlayerId == playerId, playerShots);
+            return playerShots;
+        }
+        private int GetNextEnemyShot(GameSessionModel session, FiredShotsModel enemyShots)
+        {
+            var maxPosition = session.BoardSize * session.BoardSize;
+            int nextEnemyShot;
+
+            do
+            {
+                nextEnemyShot = random.Next(maxPosition);
+            }
+            while (enemyShots.Positions.Contains(nextEnemyShot));
+            return nextEnemyShot;
+        }
+
+        private async Task<FiredShotsModel> UpdateEnemyShots(string sessionId, string robotId, int nextEnemyShot, FiredShotsModel enemyShots)
+        {
+            enemyShots.Positions.Add(nextEnemyShot);
+
+            await firedShotsCollection.UpdateOneAsync((s) => s.SessionId == sessionId && s.PlayerId == robotId, enemyShots);
+            return enemyShots;
         }
     }
 }

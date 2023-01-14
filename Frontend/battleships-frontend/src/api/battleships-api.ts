@@ -1,6 +1,5 @@
 import axios from 'axios';
-import { GameSession } from './game-session';
-import { User } from './user';
+import { GameSession, ShipPositions } from './game-session';
 import { appConfig } from './config';
 
 export class Api {
@@ -16,14 +15,17 @@ export class Api {
         return response.data;
     }
 
-    async getName(playerId: string) {
-        const response = await axios.get<string>(`${this.baseUrl}/get-name?playerId=${playerId}`);
+    async startGame(playerId: string) {
+        const response = await axios.post<string>(`${this.baseUrl}/start-game?playerId=${playerId}`);
         return response.data;
     }
 
-    async getAvailablePlayers() {
-        const response = await axios.get<User[]>(`${this.baseUrl}/available-players`);
-        return response.data;
+    async submitPlayerPositions(playerId: string, sessionId: string, positions: ShipPositions[]) {
+        await axios.post<string>(`${this.baseUrl}/submit-player-positions?playerId=${playerId}&sessionId=${sessionId}`, positions)
+    }
+    
+    async playerShot(playerId: string, sessionId: string, position: number) {
+        await axios.post<string>(`${this.baseUrl}/player-shot?playerId=${playerId}&sessionId=${sessionId}`, { position: position })
     }
 }
 
