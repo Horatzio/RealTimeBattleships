@@ -97,24 +97,24 @@ function PlacementBoard({ boardSize, shipLengths, onFinishedPlacing }: Placement
 
     return (
         <>
-        <SimpleGrid cursor={'pointer'} columns={boardSize} gridGap={'2px'}>
-            {gridBoxes.map(i => (
-                <Box as="div" key={i} onPointerEnter={() => onPointerEnter(i)}
-                bg={getBoxColor(i)}
-                borderRadius={'md'} height={'40px'} width={'40px'} borderWidth={'5px'}
-                onDoubleClick={placeShip}
-                />
-            ))}
-        </SimpleGrid>
-        <Center marginTop={"10px"}>
-            <HStack>
-                <Button onClick={() => onFinishedPlacing(shipPositions.current)}>
-                    Finish
-                </Button>
-                <IconButton icon={<CloseIcon />} aria-label={""} onClick={resetShips}/>
-                <IconButton icon={<RepeatIcon />} aria-label={""} onClick={switchDirection}/> 
-            </HStack>
-        </Center>
+            <SimpleGrid cursor={'pointer'} columns={boardSize} gridGap={'2px'}>
+                {gridBoxes.map(i => (
+                    <Box as="div" key={i} onPointerEnter={() => onPointerEnter(i)}
+                    bg={getBoxColor(i)}
+                    borderRadius={'md'} height={'40px'} width={'40px'} borderWidth={'5px'}
+                    onClick={placeShip}
+                    />
+                ))}
+            </SimpleGrid>
+            <Center marginTop={"10px"}>
+                <HStack>
+                    <Button onClick={() => onFinishedPlacing(shipPositions.current)}>
+                        Finish
+                    </Button>
+                    <IconButton icon={<CloseIcon />} aria-label={""} onClick={resetShips}/>
+                    <IconButton icon={<RepeatIcon />} aria-label={""} onClick={switchDirection}/> 
+                </HStack>
+            </Center>
         </>
     )
 }

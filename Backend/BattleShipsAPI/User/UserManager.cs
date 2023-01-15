@@ -1,20 +1,19 @@
 ﻿using BattleShipsAPI.User;
-using JsonFlatFileDataStore;
 
 namespace BattleShipsAPI
 {
     public class UserManager
     {
-        private readonly IDocumentCollection<UserModel> userCollection;
+        private readonly IDao<UserModel> userDao;
 
-        public UserManager(DataStore dataStore)
+        public UserManager(IDao<UserModel> userDao)
         {
-           userCollection = dataStore.GetCollection<UserModel>();
+            this.userDao = userDao;
         }
 
-        public async Task<string> CreateOrGetId(string username)
+        public async Task<string> CreateOrGetIdAsync(string username)
         {
-            var existingUser = userCollection.AsQueryable()
+            var existingUser = userDao.GetAll()
                 .Where(u => u.Name == username)
                 .FirstOrDefault();
 
@@ -26,23 +25,16 @@ namespace BattleShipsAPI
                     Name = username
                 };
 
-                await userCollection.InsertOneAsync(newUser);
+                await userDao.InsertOneAsync(newUser);
                 return newUser.Id.ToString();
             }
 
             return existingUser.Id.ToString();
         }
 
-        private const string DefaultUsername = "Player";
-
-        public async Task<string> GetUsername(string userId)
+        public async Task DeleteUserAsync(string userId)
         {
-            var user = userCollection.AsQueryable()
-                .FirstOrDefault(u => u.Id == userId);
-
-            return user?.Name ?? DefaultUsername;
+            await userDao.DeleteOneAsync(userId);
         }
-
-        public IEnumerable<UserModel> GetAllUsers() => userCollection.AsQueryable();
     }
 }

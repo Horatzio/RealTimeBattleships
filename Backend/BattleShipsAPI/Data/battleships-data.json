@@ -8,5 +8,8 @@
       "id": "cca776c4-aa4d-4d02-973f-cc8c444ea678",
       "name": "Manuel"
     }
-  ]
+  ],
+  "gameSessionModel": [],
+  "firedShotsModel": [],
+  "shipPlacementModel": []
 }
