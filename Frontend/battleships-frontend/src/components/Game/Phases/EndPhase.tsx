@@ -1,4 +1,4 @@
-import { Button, Card, CardBody, CardFooter, Stack } from "@chakra-ui/react";
+import { Button, Card, CardBody, CardFooter } from "@chakra-ui/react";
 import { battleShipsApi } from "../../../api/battleships-api";
 import { GameContext } from "../GameContext";
 import { ReactElement, useContext } from "react";
