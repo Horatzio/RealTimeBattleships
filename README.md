@@ -15,9 +15,10 @@ The player enters or selects coordinates of the form "A5", where "A" is the colu
 The game currently features simple username-based authentication and singleplayer against a rudimentary AI that copies your ship positions and shoots randomly.
 
 Video
-[![Showcase Video](./assets/battleships-login.png)](./assets/battleships-showcase.webm)
+[![Showcase Video](./assets/battleships-login.png)](./assets/battleships-showcase.mp4)
 
 Notes:
+- The Enemy's ship positions are revealed if you hit any part of the ship
 - The scope of the project is limited
 - The Authentication flow is not supposed to be a comprehensive authentication flow
 - It's quite hard for the AI to win as he shoots randomly
@@ -58,6 +59,7 @@ Steps:
 3. `dotnet build`
 4. `dotnet run`
 
+Finally
 Go to [localhost:3000](http://localhost:3000)
 
 ## Contact
